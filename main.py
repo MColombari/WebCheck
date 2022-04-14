@@ -1,8 +1,9 @@
 """ BotName = 'MC_Web_Check_bot' """
 
 # SQLite imports
+from datetime import datetime
 from sqlite3 import Error
-from interaction import LDB
+from interaction import LocalDB
 
 # Bot Imports
 import logging
@@ -20,36 +21,38 @@ from urllib.request import urlopen, Request
 from botKey import TOKEN
 
 # Constant values
-TIME_BETWEEN_CHEK = 1800
+TIME_BETWEEN_CHEK = 10
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 def checking(context: CallbackContext):
-    """
+    chat_id = context.job.context
     try:
-        job = context.job
-        i = 0
-        if job.context in urls.keys():
-            for [urlString, hashValue] in urls[job.context]:
-                url = Request(urlString, headers={'User-Agent': 'Mozilla/5.0'})
-                response = urlopen(url).read()
-                if hashValue != hashlib.sha224(response).hexdigest():
-                    context.bot.send_message(job.context, text="[{}]\t'{}' has updated.".format(
-                        datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), urlString))
-                    urls[job.context][i][1] = hashlib.sha224(response).hexdigest()
-                i += 1
+        query_result = LocalDB.query('SELECT url, hash FROM record WHERE chat_id=?', (chat_id,))
+        for row in query_result[0]:
+            url_string = row[0]
+            hash_value = row[1]
+
+            url = Request(url_string, headers={'User-Agent': 'Mozilla/5.0'})
+            response = urlopen(url).read()
+            if hash_value != hashlib.sha224(response).hexdigest():
+                text = "[{}]\t'{}' has updated.".format(datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), url_string)
+                context.bot.send_message(chat_id, text)
+                new_hash = hashlib.sha224(response).hexdigest()
+                LocalDB.query('UPDATE record SET hash=? WHERE chat_id=? AND url=?', (new_hash, chat_id, url_string))
 
     except HTTPError as e:
-        # Fix this and like this in all code.
-        context.bot.send_message(job.context, text="Usage: /add <url>\n'{}' doesn't exists.")
-    except URLError as e:
-        context.bot.send_message(job.context, text="Usage: /add <url>\n'{}' is not valid website.")
+        context.bot.send_message(chat_id, "\'{}\'Can't be found.".format(context.args[0]))
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+    except Error as e:
+        context.bot.send_message(chat_id, "Unexpected Error with the database.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Exception as e:
-        context.bot.send_message(job.context, text="Unusual exception catched '{}'".format(e))
-    """
+        context.bot.send_message(chat_id, "Unusual exception caught.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+
 
 def help(update: Update, context: CallbackContext):
     update.message.reply_text("""
@@ -77,13 +80,14 @@ def add(update: Update, context: CallbackContext):
         hash_value = hashlib.sha224(response).hexdigest()
 
         # Update Database
-        local_db = LDB()
-        query_result = local_db.query('SELECT COUNT(*) FROM chat WHERE id=?', (chat_id,))
+        query_result = LocalDB.query('SELECT COUNT(*) FROM chat WHERE id=?', (chat_id,))
         if query_result[0][0][0] == 0:
-            local_db.query('INSERT INTO chat(id) VALUES (?)', (chat_id,))
-        query_result = local_db.query('SELECT COUNT(*) FROM record WHERE chat_id=? AND url=?', (chat_id,context.args[0]))
+            LocalDB.query('INSERT INTO chat(id) VALUES (?)', (chat_id,))
+        query_result = LocalDB.query('SELECT COUNT(*) FROM record WHERE chat_id=? AND url=?',
+                                      (chat_id, context.args[0]))
         if query_result[0][0][0] == 0:
-            local_db.query('INSERT INTO record(chat_id, url, hash) VALUES (?,?,?)', (chat_id, context.args[0], hash_value))
+            LocalDB.query('INSERT INTO record(chat_id, url, hash) VALUES (?,?,?)',
+                           (chat_id, context.args[0], hash_value))
             update.message.reply_text("'{}'\nWill be che checked.".format(context.args[0]))
         else:
             update.message.reply_text("'{}'\nIt was already added to the list of website.".format(context.args[0]))
@@ -93,11 +97,12 @@ def add(update: Update, context: CallbackContext):
         if not current_jobs:
             context.job_queue.run_repeating(checking, TIME_BETWEEN_CHEK, context=chat_id, name=str(chat_id))
 
-    except ValueError as e:
-        update.message.reply_text("\'{}\'\nIs not a valid website.".format('<None>' if (len(context.args) == 0) else context.args[0]))
+    except (ValueError, URLError) as e:
+        update.message.reply_text(
+            "\'{}\'\nIs not a valid website.".format('<None>' if (len(context.args) == 0) else context.args[0]))
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
-    except (HTTPError, URLError) as e:
-        update.message.reply_text("Unexpected Error with the website.")
+    except HTTPError as e:
+        update.message.reply_text("\'{}\'Can't be found.".format(context.args[0]))
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Error as e:
         update.message.reply_text("Unexpected Error with the database.")
@@ -106,27 +111,23 @@ def add(update: Update, context: CallbackContext):
         update.message.reply_text("Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
 
-
-def stop(update: Update, context: CallbackContext):
+def removeByUrl(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
-    current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
-    if not current_jobs:
-        update.message.reply_text("Cheking was already stopped.")
-        return
-    for job in current_jobs:
-        job.schedule_removal()
-        update.message.reply_text("Stop cheking.")
 
+    try:
+        if (context.args.__len__() == 0) or (not isinstance(context.args[0], str)):
+            update.message.reply_text('Usage: \'/add <url>\'.')
+            return
 
-def isChecking(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    current_jobs = context.job_queue.get_jobs_by_name(str(chat_id))
-    if not current_jobs:
-        update.message.reply_text("Is Checking = False.")
-        return
-    update.message.reply_text("Is Checking = True.")
-
-
+        for url in context.args:
+            LocalDB.query("DELETE FROM record WHERE chat_id=? AND url=?", (chat_id, url))
+        update.message.reply_text('Website removed form the list.')
+    except Error as e:
+        update.message.reply_text("Unexpected Error with the database.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+    except Exception as e:
+        update.message.reply_text("Unusual exception caught.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
 """
 def check(update: Update, context: CallbackContext):
     try:
@@ -149,18 +150,28 @@ def check(update: Update, context: CallbackContext):
         update.message.reply_text("Unusual exception catched '{}'".format(e))
 """
 
-"""
+
 def showUrl(update: Update, context: CallbackContext):
-    out = 'Website saved:'
-    if update.message.chat_id not in urls.keys():
-        urls[update.message.chat_id] = list()
-    if len(urls[update.message.chat_id]) == 0:
-        update.message.reply_text("No website saved.")
-        return
-    for i in range(0, len(urls[update.message.chat_id])):
-        out += '\n\t' + str(i) + ') ' + urls[update.message.chat_id][int(i)][0]
-    update.message.reply_text(out)
-"""
+    chat_id = update.message.chat_id
+
+    try:
+        if LocalDB.query("SELECT COUNT(*) FROM record WHERE chat_id=?", (chat_id,)) == 0:
+            update.message.reply_text("No website saved.")
+        query_result = LocalDB.query("SELECT url FROM record WHERE chat_id=?", (chat_id,))
+        out = 'Website saved:'
+        i = 1
+        for row in query_result[0]:
+            out += '\n\t\t{}) \'{}\'.'.format(i, row[0])
+            i += 1
+        update.message.reply_text(out)
+    except Error as e:
+        update.message.reply_text("Unexpected Error with the database.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+    except Exception as e:
+        update.message.reply_text("Unusual exception caught.")
+        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+
+
 
 """
 def removeByIndex(update: Update, context: CallbackContext):
@@ -179,13 +190,31 @@ def removeByIndex(update: Update, context: CallbackContext):
         update.message.reply_text("Unusual exception catched '{}'".format(e))
 """
 
+
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("Welcome.")
+
+
 def nonCommand(update: Update, context: CallbackContext):
-    update.message.reply_text("Da frick are ya doing?")
+    update.message.reply_text("Unexpected command, use /help to se all the command available.")
 
 
 def error(update: Update, context: CallbackContext):
-    update.message.reply_text('Error, Caused error {}'.format(context.error))
-    logger.warning('Error, Caused error {}'.format(context.error))
+    print(context.error)
+    # update.message.reply_text('Error, Caused error {}'.format(context.error))
+
+
+# Start the job queue once the bot was started
+def restartBot(updater):
+    try:
+        query_result = LocalDB.query('SELECT id FROM chat')
+        for row in query_result[0]:
+            chat_id = row[0]
+            current_jobs = updater.job_queue.get_jobs_by_name(str(chat_id))
+            if not current_jobs:
+                updater.job_queue.run_repeating(checking, TIME_BETWEEN_CHEK, context=chat_id, name=str(chat_id))
+    except Exception as e:
+        print('Bot failed to launch do to this exception:\n{}'.format(e))
 
 
 def main():
@@ -195,12 +224,13 @@ def main():
     dp = updater.dispatcher
 
     # on different commands - answer in Telegram
+    dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("add", add))
     # dp.add_handler(CommandHandler("check", check))
-    # dp.add_handler(CommandHandler("showUrl", showUrl))
+    dp.add_handler(CommandHandler("showUrl", showUrl))
     # dp.add_handler(CommandHandler("removeByIndex", removeByIndex))
-    # dp.add_handler(CommandHandler("removeByUrl", removeByIndex))
+    dp.add_handler(CommandHandler("removeByUrl", removeByUrl))
 
     # on non command i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, nonCommand))
@@ -210,6 +240,8 @@ def main():
 
     # Start the Bot
     updater.start_polling()
+
+    restartBot(updater)
 
     # Blocks until one of the signals are received and stops the updater.
     # Block until you press Ctrl-C or the process receives SIGINT, SIGTERM or

@@ -2,39 +2,28 @@ import sqlite3
 import pathlib
 
 
-def singleton(class_):
-    instances = {}
+class LocalDB:
 
-    def getinstance(*args, **kwargs):
-        if class_ not in instances:
-            instances[class_] = class_(*args, **kwargs)
-        return instances[class_]
+    @staticmethod
+    def query(query, *params):
+        try:
+            db_conn = sqlite3.connect('{}/SQLiteDB.db'.format(str(pathlib.Path().resolve())))
+            ret = list()
+            cur = db_conn.cursor()
 
-    return getinstance
-
-
-@singleton
-class LDB:
-    def __init__(self):
-        self.dbConn = sqlite3.connect('{}/SQLiteDB.db'.format(str(pathlib.Path().resolve())))
-
-
-    def query(self, query, *params):
-        ret = list()
-        cur = self.dbConn.cursor()
-
-        if len(params) == 0:
-            cur.execute(query)
-            ret.append(cur.fetchall())
-        else:
-            for param in params:
-                cur.execute(query, param)
+            if len(params) == 0:
+                cur.execute(query)
                 ret.append(cur.fetchall())
-        self.dbConn.commit()
-        return ret
-
-    def __del__(self):
-        self.dbConn.close()
+            else:
+                for param in params:
+                    cur.execute(query, param)
+                    ret.append(cur.fetchall())
+            db_conn.commit()
+            return ret
+        except Exception as e:
+            raise e
+        finally:
+            db_conn.close()
 
 
 """    def getData(self, query, param=None):
