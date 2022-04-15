@@ -21,11 +21,12 @@ from urllib.request import urlopen, Request
 from botKey import TOKEN
 
 # Constant values
-TIME_BETWEEN_CHEK = 10
+TIME_BETWEEN_CHEK = 1800
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def checking(context: CallbackContext):
     chat_id = context.job.context
@@ -57,14 +58,11 @@ def checking(context: CallbackContext):
 def help(update: Update, context: CallbackContext):
     update.message.reply_text("""
     Command List:
-    \t/start      -- Bot starting.
+    \t/start      -- Bot welcome message.
     \t/help       -- Show command list.
     \t/add <url> -- Add url to check.
-    \t/stop       -- Stop checking website.
-    \t/isChecking -- Checking state.
-    \t/check     -- Force cheking all website.
     \t/showUrl -- Show all website is checking.
-    \t/removeByIndex <Index> -- Remove url by index (shown in /showUrl).""")
+    \t/removeByUrl <url> -- Remove url by index (shown in /showUrl).""")
 
 
 def add(update: Update, context: CallbackContext):
@@ -84,10 +82,10 @@ def add(update: Update, context: CallbackContext):
         if query_result[0][0][0] == 0:
             LocalDB.query('INSERT INTO chat(id) VALUES (?)', (chat_id,))
         query_result = LocalDB.query('SELECT COUNT(*) FROM record WHERE chat_id=? AND url=?',
-                                      (chat_id, context.args[0]))
+                                     (chat_id, context.args[0]))
         if query_result[0][0][0] == 0:
             LocalDB.query('INSERT INTO record(chat_id, url, hash) VALUES (?,?,?)',
-                           (chat_id, context.args[0], hash_value))
+                          (chat_id, context.args[0], hash_value))
             update.message.reply_text("'{}'\nWill be che checked.".format(context.args[0]))
         else:
             update.message.reply_text("'{}'\nIt was already added to the list of website.".format(context.args[0]))
@@ -111,6 +109,7 @@ def add(update: Update, context: CallbackContext):
         update.message.reply_text("Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
 
+
 def removeByUrl(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
 
@@ -128,27 +127,6 @@ def removeByUrl(update: Update, context: CallbackContext):
     except Exception as e:
         update.message.reply_text("Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
-"""
-def check(update: Update, context: CallbackContext):
-    try:
-        update.message.reply_text("Start checking...")
-        for [urlString, hashValue] in urls[update.message.chat_id]:
-            url = Request(urlString, headers={'User-Agent': 'Mozilla/5.0'})
-            response = urlopen(url).read()
-            if hashValue != hashlib.sha224(response).hexdigest():
-                update.message.reply_text(
-                    "[{}]\t'{}' has updated.".format(datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), urlString))
-            else:
-                update.message.reply_text(
-                    "[{}]\t'{}' hasn't updated.".format(datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), urlString))
-        update.message.reply_text("All Website are checked")
-    except HTTPError as e:
-        update.message.reply_text("Usage: /add <url>\n'{}' doesn't exists.")
-    except URLError as e:
-        update.message.reply_text("Usage: /add <url>\n'{}' is not valid website.")
-    except Exception as e:
-        update.message.reply_text("Unusual exception catched '{}'".format(e))
-"""
 
 
 def showUrl(update: Update, context: CallbackContext):
@@ -172,27 +150,16 @@ def showUrl(update: Update, context: CallbackContext):
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
 
 
-
-"""
-def removeByIndex(update: Update, context: CallbackContext):
-    try:
-        i = int(context.args[0])
-        if (i >= len(urls[update.message.chat_id])) | (i < 0):
-            update.message.reply_text("'{}', invalid number.".format(i))
-            return
-        urlString = urls[update.message.chat_id].pop(i)[0]
-        update.message.reply_text("'{}', removed.".format(urlString))
-    except ValueError as e:
-        update.message.reply_text("Value exception '{}' is not a integer\n[{}]".format(i, e))
-    except IndexError as e:
-        update.message.reply_text("Index exception '{}'".format(e))
-    except Exception as e:
-        update.message.reply_text("Unusual exception catched '{}'".format(e))
-"""
-
-
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Welcome.")
+    update.message.reply_text(      "-------------------------------------------------------------\n\n" +
+                                    "                            Welcome!                     \n\n" +
+                                    "This is the Web Check bot, is a bot\n " +
+                                    "designed to periodically check a list\n" +
+                                    "a website and notify the user about\n" +
+                                    "any changes.\n" +
+                                    "Yuo can learn more here:\n" +
+                                    "https://github.com/MattiaColombari/WebCheck\n\n" +
+                                    "-------------------------------------------------------------")
 
 
 def nonCommand(update: Update, context: CallbackContext):
@@ -227,9 +194,7 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("add", add))
-    # dp.add_handler(CommandHandler("check", check))
     dp.add_handler(CommandHandler("showUrl", showUrl))
-    # dp.add_handler(CommandHandler("removeByIndex", removeByIndex))
     dp.add_handler(CommandHandler("removeByUrl", removeByUrl))
 
     # on non command i.e message - echo the message on Telegram
