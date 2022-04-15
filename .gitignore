@@ -1,3 +1,5 @@
 
 botKey.py
 tests.py
+*.db
+__pycache__/interaction.cpython-39.pyc
