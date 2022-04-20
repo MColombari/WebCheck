@@ -62,7 +62,7 @@ def help(update: Update, context: CallbackContext):
     \t/help       -- Show command list.
     \t/add <url> -- Add url to check.
     \t/showUrl -- Show all website is checking.
-    \t/removeByUrl <url> -- Remove url by index (shown in /showUrl).""")
+    \t/removeByUrl <url> -- Remove link by url.""")
 
 
 def add(update: Update, context: CallbackContext):
@@ -159,6 +159,8 @@ def start(update: Update, context: CallbackContext):
                                     "any changes.\n" +
                                     "Yuo can learn more here:\n" +
                                     "https://github.com/MattiaColombari/WebCheck\n\n" +
+                                    "You can see all the command available\n" +
+                                    "with /help.\n\n"
                                     "-------------------------------------------------------------")
 
 
