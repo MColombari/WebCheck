@@ -16,28 +16,72 @@ import hashlib
 from urllib.request import urlopen, Request
 
 # Time import
+import errno
+import os
+import signal
+import functools
+
+from time import sleep
+from threading import Thread
 
 # Bot key import
 from botKey import TOKEN
 
 # Constant values
-TIME_BETWEEN_CHEK = 1800
+TIME_BETWEEN_CHEK = 10
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class TimeoutException(Exception):
+    pass
+
+
+class TimeOut(Thread):
+    def __init__(self, context, chat_id, url=None):
+        self.context = context
+        self.chat_id = chat_id
+        self.url = url
+        Thread.__init__(self)
+        self.alive = True
+        self.finished = False
+
+    def run(self):
+        print('started')
+        sleep(10)
+        self.finished = True
+        print(self.alive)
+        if self.alive:
+            self.context.bot.send_message(self.chat_id, "'{}'\nThis website required more than 10 second".format(self.url) +
+                                                        " to load, it could be unreachable.")
+        while self.alive:
+            pass
+
+
 def checking(context: CallbackContext):
     chat_id = context.job.context
+
+    t = None
+
     try:
         query_result = LocalDB.query('SELECT url, hash FROM record WHERE chat_id=?', (chat_id,))
         for row in query_result[0]:
             url_string = row[0]
             hash_value = row[1]
 
+            t = TimeOut(context, chat_id, url_string)
+            t.start()
+
             url = Request(url_string, headers={'User-Agent': 'Mozilla/5.0'})
             response = urlopen(url).read()
+
+            if t.finished:
+                t.alive = False
+                continue
+            t.alive = False
+
             if hash_value != hashlib.sha224(response).hexdigest():
                 text = "[{}]\t'{}' has updated.".format(datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), url_string)
                 context.bot.send_message(chat_id, text)
@@ -46,13 +90,15 @@ def checking(context: CallbackContext):
 
     except HTTPError as e:
         context.bot.send_message(chat_id, "\'{}\'Can't be found.".format(context.args[0]))
-        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+        # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Error as e:
         context.bot.send_message(chat_id, "Unexpected Error with the database.")
-        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+        # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Exception as e:
-        context.bot.send_message(chat_id, "Unusual exception caught.")
+        # context.bot.send_message(chat_id, "Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+    finally:
+        t.alive = False
 
 
 def help(update: Update, context: CallbackContext):
@@ -68,14 +114,23 @@ def help(update: Update, context: CallbackContext):
 def add(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
 
+    t = TimeOut(context, chat_id)
+    t.start()
+
     try:
         # Check Website
         if (context.args.__len__() == 0) or (not isinstance(context.args[0], str)):
             update.message.reply_text('Usage: /add <url>')
             return
+        t.url = context.args[0]
         url = Request(context.args[0], headers={'User-Agent': 'Mozilla/5.0'})
         response = urlopen(url).read()
         hash_value = hashlib.sha224(response).hexdigest()
+
+        if t.finished:
+            t.alive = False
+            return
+        t.alive = False
 
         # Update Database
         query_result = LocalDB.query('SELECT COUNT(*) FROM chat WHERE id=?', (chat_id,))
@@ -108,6 +163,8 @@ def add(update: Update, context: CallbackContext):
     except Exception as e:
         update.message.reply_text("Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+    finally:
+        t.alive = False
 
 
 def removeByUrl(update: Update, context: CallbackContext):
@@ -151,17 +208,17 @@ def showUrl(update: Update, context: CallbackContext):
 
 
 def start(update: Update, context: CallbackContext):
-    update.message.reply_text(      "-------------------------------------------------------------\n\n" +
-                                    "                            Welcome!                     \n\n" +
-                                    "This is the Web Check bot, is a bot\n " +
-                                    "designed to periodically check a list\n" +
-                                    "a website and notify the user about\n" +
-                                    "any changes.\n" +
-                                    "Yuo can learn more here:\n" +
-                                    "https://github.com/MattiaColombari/WebCheck\n\n" +
-                                    "You can see all the command available\n" +
-                                    "with /help.\n\n"
-                                    "-------------------------------------------------------------")
+    update.message.reply_text("-------------------------------------------------------------\n\n" +
+                              "                            Welcome!                     \n\n" +
+                              "This is the Web Check bot, is a bot\n " +
+                              "designed to periodically check a list\n" +
+                              "a website and notify the user about\n" +
+                              "any changes.\n" +
+                              "Yuo can learn more here:\n" +
+                              "https://github.com/MattiaColombari/WebCheck\n\n" +
+                              "You can see all the command available\n" +
+                              "with /help.\n\n"
+                              "-------------------------------------------------------------")
 
 
 def nonCommand(update: Update, context: CallbackContext):
