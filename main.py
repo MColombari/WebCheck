@@ -28,7 +28,7 @@ from multiprocessing import Process
 from botKey import TOKEN
 
 # Constant values
-TIME_BETWEEN_CHEK = 30
+TIME_BETWEEN_CHEK = 1800
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
