@@ -22,13 +22,13 @@ import signal
 import functools
 
 from time import sleep
-from threading import Thread
+from multiprocessing import Process
 
 # Bot key import
 from botKey import TOKEN
 
 # Constant values
-TIME_BETWEEN_CHEK = 10
+TIME_BETWEEN_CHEK = 30
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -39,31 +39,18 @@ class TimeoutException(Exception):
     pass
 
 
-class TimeOut(Thread):
-    def __init__(self, context, chat_id, url=None):
-        self.context = context
-        self.chat_id = chat_id
-        self.url = url
-        Thread.__init__(self)
-        self.alive = True
-        self.finished = False
+class TimeOut:
+    def __init__(self, url_string):
+        self.url_string = url_string
+        self.process = Process(target=self.run)
 
     def run(self):
-        print('started')
-        sleep(10)
-        self.finished = True
-        print(self.alive)
-        if self.alive:
-            self.context.bot.send_message(self.chat_id, "'{}'\nThis website required more than 10 second".format(self.url) +
-                                                        " to load, it could be unreachable.")
-        while self.alive:
-            pass
+        url = Request(self.url_string, headers={'User-Agent': 'Mozilla/5.0'})
+        urlopen(url).read()
 
 
 def checking(context: CallbackContext):
     chat_id = context.job.context
-
-    t = None
 
     try:
         query_result = LocalDB.query('SELECT url, hash FROM record WHERE chat_id=?', (chat_id,))
@@ -71,16 +58,19 @@ def checking(context: CallbackContext):
             url_string = row[0]
             hash_value = row[1]
 
-            t = TimeOut(context, chat_id, url_string)
-            t.start()
+            # Check if the website is reachable.
+            t = TimeOut(url_string)
+            t.process.start()
+            t.process.join(10)
+            if t.process.is_alive():
+                context.bot.send_message(chat_id,
+                                         "'{}'\nThis website required more than 10 second".format(url_string) +
+                                         " to load, it could be unreachable.")
+                t.process.terminate()
+                continue
 
             url = Request(url_string, headers={'User-Agent': 'Mozilla/5.0'})
             response = urlopen(url).read()
-
-            if t.finished:
-                t.alive = False
-                continue
-            t.alive = False
 
             if hash_value != hashlib.sha224(response).hexdigest():
                 text = "[{}]\t'{}' has updated.".format(datetime.now().strftime(" %Y/%m/%d %H:%M:%S "), url_string)
@@ -92,13 +82,11 @@ def checking(context: CallbackContext):
         context.bot.send_message(chat_id, "\'{}\'Can't be found.".format(context.args[0]))
         # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Error as e:
-        context.bot.send_message(chat_id, "Unexpected Error with the database.")
+        context.bot.send_message(chat_id, "Unexpected Error while using the database.")
         # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Exception as e:
         # context.bot.send_message(chat_id, "Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
-    finally:
-        t.alive = False
 
 
 def help(update: Update, context: CallbackContext):
@@ -114,23 +102,26 @@ def help(update: Update, context: CallbackContext):
 def add(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
 
-    t = TimeOut(context, chat_id)
-    t.start()
-
     try:
         # Check Website
         if (context.args.__len__() == 0) or (not isinstance(context.args[0], str)):
             update.message.reply_text('Usage: /add <url>')
             return
-        t.url = context.args[0]
+
+        # Check if the website is reachable.
+        t = TimeOut(context.args[0])
+        t.process.start()
+        t.process.join(10)
+        if t.process.is_alive():
+            context.bot.send_message(chat_id,
+                                     "'{}'\nThis website required more than 10 second".format(context.args[0]) +
+                                     " to load, it could be unreachable, it will not be saved.")
+            t.process.terminate()
+            return
+
         url = Request(context.args[0], headers={'User-Agent': 'Mozilla/5.0'})
         response = urlopen(url).read()
         hash_value = hashlib.sha224(response).hexdigest()
-
-        if t.finished:
-            t.alive = False
-            return
-        t.alive = False
 
         # Update Database
         query_result = LocalDB.query('SELECT COUNT(*) FROM chat WHERE id=?', (chat_id,))
@@ -153,18 +144,16 @@ def add(update: Update, context: CallbackContext):
     except (ValueError, URLError) as e:
         update.message.reply_text(
             "\'{}\'\nIs not a valid website.".format('<None>' if (len(context.args) == 0) else context.args[0]))
-        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+        # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except HTTPError as e:
         update.message.reply_text("\'{}\'Can't be found.".format(context.args[0]))
-        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+        # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Error as e:
-        update.message.reply_text("Unexpected Error with the database.")
-        print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
+        update.message.reply_text("Unexpected Error while using the database.")
+        # print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
     except Exception as e:
-        update.message.reply_text("Unusual exception caught.")
+        # update.message.reply_text("Unusual exception caught.")
         print("Exception type:\'{}\'\nDescription:\'{}\'".format(type(e), e))
-    finally:
-        t.alive = False
 
 
 def removeByUrl(update: Update, context: CallbackContext):
