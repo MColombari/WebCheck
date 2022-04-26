@@ -16,10 +16,10 @@ import hashlib
 from urllib.request import urlopen, Request
 
 # Time import
-import errno
-import os
-import signal
-import functools
+# import errno
+# import os
+# import signal
+# import functools
 
 from time import sleep
 from multiprocessing import Process
@@ -31,12 +31,8 @@ from botKey import TOKEN
 TIME_BETWEEN_CHEK = 1800
 
 # Enable logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-class TimeoutException(Exception):
-    pass
+# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# logger = logging.getLogger(__name__)
 
 
 class TimeOut:
@@ -95,8 +91,8 @@ def help(update: Update, context: CallbackContext):
     \t/start      -- Bot welcome message.
     \t/help       -- Show command list.
     \t/add <url> -- Add url to check.
-    \t/showUrl -- Show all website is checking.
-    \t/removeByUrl <url> -- Remove link by url.""")
+    \t/show -- Show all website is checking.
+    \t/remove <url> -- Remove link by url.""")
 
 
 def add(update: Update, context: CallbackContext):
@@ -199,9 +195,9 @@ def showUrl(update: Update, context: CallbackContext):
 def start(update: Update, context: CallbackContext):
     update.message.reply_text("-------------------------------------------------------------\n\n" +
                               "                            Welcome!                     \n\n" +
-                              "This is the Web Check bot, is a bot\n " +
+                              "This is 'Web Check' bot, is a bot\n " +
                               "designed to periodically check a list\n" +
-                              "a website and notify the user about\n" +
+                              "of website and notify the user about\n" +
                               "any changes.\n" +
                               "Yuo can learn more here:\n" +
                               "https://github.com/MattiaColombari/WebCheck\n\n" +
@@ -214,24 +210,6 @@ def nonCommand(update: Update, context: CallbackContext):
     update.message.reply_text("Unexpected command, use /help to se all the command available.")
 
 
-def error(update: Update, context: CallbackContext):
-    print(context.error)
-    # update.message.reply_text('Error, Caused error {}'.format(context.error))
-
-
-# Start the job queue once the bot was started
-def restartBot(updater):
-    try:
-        query_result = LocalDB.query('SELECT id FROM chat')
-        for row in query_result[0]:
-            chat_id = row[0]
-            current_jobs = updater.job_queue.get_jobs_by_name(str(chat_id))
-            if not current_jobs:
-                updater.job_queue.run_repeating(checking, TIME_BETWEEN_CHEK, context=chat_id, name=str(chat_id))
-    except Exception as e:
-        print('Bot failed to launch do to this exception:\n{}'.format(e))
-
-
 def main():
     updater = Updater(TOKEN, use_context=True)
 
@@ -242,8 +220,8 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(CommandHandler("add", add))
-    dp.add_handler(CommandHandler("showUrl", showUrl))
-    dp.add_handler(CommandHandler("removeByUrl", removeByUrl))
+    dp.add_handler(CommandHandler("show", showUrl))
+    dp.add_handler(CommandHandler("remove", removeByUrl))
 
     # on non command i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, nonCommand))
