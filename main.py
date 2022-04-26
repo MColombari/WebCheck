@@ -16,7 +16,7 @@ import hashlib
 from urllib.request import urlopen, Request
 
 # Time import
-# import errno
+import errno
 # import os
 # import signal
 # import functools
