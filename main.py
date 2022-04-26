@@ -15,12 +15,6 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, Callb
 import hashlib
 from urllib.request import urlopen, Request
 
-# Time import
-import errno
-# import os
-# import signal
-# import functools
-
 from time import sleep
 from multiprocessing import Process
 
@@ -29,10 +23,6 @@ from botKey import TOKEN
 
 # Constant values
 TIME_BETWEEN_CHEK = 1800
-
-# Enable logging
-# logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-# logger = logging.getLogger(__name__)
 
 
 class TimeOut:
@@ -208,6 +198,24 @@ def start(update: Update, context: CallbackContext):
 
 def nonCommand(update: Update, context: CallbackContext):
     update.message.reply_text("Unexpected command, use /help to se all the command available.")
+
+
+def error(update: Update, context: CallbackContext):
+    print(context.error)
+    # update.message.reply_text('Error, Caused error {}'.format(context.error))
+
+
+# Start the job queue once the bot was started
+def restartBot(updater):
+    try:
+        query_result = LocalDB.query('SELECT id FROM chat')
+        for row in query_result[0]:
+            chat_id = row[0]
+            current_jobs = updater.job_queue.get_jobs_by_name(str(chat_id))
+            if not current_jobs:
+                updater.job_queue.run_repeating(checking, TIME_BETWEEN_CHEK, context=chat_id, name=str(chat_id))
+    except Exception as e:
+        print('Bot failed to launch do to this exception:\n{}'.format(e))
 
 
 def main():
